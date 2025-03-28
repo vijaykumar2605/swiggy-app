@@ -1,0 +1,46 @@
+$ mkdir honey
+$ git init
+$ git config --global user.email "prasanthroyalpasupuleti@gmail.com"
+$ git config --global user.name "9160882192"
+$ echo "Hello, World!" > file.txt
+$ git add file.txt
+$ git commit -m "Initial commit"
+$ git checkout -b feature-branch
+$ echo "Feature added" >> file.txt
+$ git commit -am "Added feature"
+$ git checkout master
+$ echo "Main branch update" >> file.txt
+$ git commit -am "Updated file in master branch"
+$ git merge feature-branch
+$ git add file.txt
+$ cat file.txt
+$ git commit -m "Resolved merge conflict"
+$ git branch -d feature-branch
+$ git checkout -b cricket
+$ echo "Main branch update" >> file.txt
+$ git commit -am "Updated file in main branch"
+$ git checkout master
+$ git merge cricket
+$ git add file.txt
+$ git commit -m "Resolved merge conflict"
+$ git add .
+$ git status
+$ git commit -m "Resolved merge conflict"
+$ git checkout cricket
+$ git log --oneline --graph --decorate --all
+
+
+stress commands
+
+sudo amazon-linux-extras install epel -y
+sudo yum install -y stress
+stress --cpu 80 --timeout 20000
+
+
+
+
+
+
+
+
+
