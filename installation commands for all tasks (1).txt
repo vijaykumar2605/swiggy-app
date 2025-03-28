@@ -1,0 +1,1364 @@
+sudo wget -O /usr/share/keyrings/jenkins-keyring.asc \
+    https://pkg.jenkins.io/debian-stable/jenkins.io-2023.key
+
+echo "deb [signed-by=/usr/share/keyrings/jenkins-keyring.asc]" \
+    https://pkg.jenkins.io/debian-stable binary/ | sudo tee \
+    /etc/apt/sources.list.d/jenkins.list > /dev/null
+
+sudo apt-get update
+sudo apt-get install fontconfig openjdk-17-jre
+sudo apt-get install jenkins
+
+sudo systemctl start jenkins
+sudo systemctl enable jenkins
+sudo systemctl status jenkins
+
+sudo apt install maven -y
+mvn --version
+
+sudo systemctl daemon-reload
+sudo systemctl restart jenkins.service
+sudo systemctl status  jenkins.service
+
+sudo cat /var/lib/jenkins/secrets/initialAdminPassword
+-------------------------------------------------------------------------------------------------------
+-------------------------------------------------------------------------------------------------------
+docker installation commands
+-------------------------------------------------------------------------------------------------------
+sudo apt-get update
+sudo apt-get install docker.io -y
+sudo usermod -aG docker $USER
+newgrp docker
+sudo chmod 777 /var/run/docker.sock
+docker run -d --name sonar -p 9000:9000 sonarqube:lts-community
+------------------------------------------------------------------------------------------------------------------------
+------------------------------------------------------------------------------------------------------------------------
+trivy installation commands
+---------------------------------------------------------------------------------------------
+sudo apt-get install wget apt-transport-https gnupg lsb-release -y
+
+wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | gpg --dearmor | sudo tee /usr/share/keyrings/trivy.gpg > /dev/null
+
+echo "deb [signed-by=/usr/share/keyrings/trivy.gpg] https://aquasecurity.github.io/trivy-repo/deb $(lsb_release -sc) main" | sudo tee -a /etc/apt/sources.list.d/trivy.list
+
+sudo apt-get update –y
+
+sudo apt-get install trivy -y
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+-------------------------------------------------------------------------------------------------------------------------
+plugins
+
+avaliable plugins
+pipeline
+eclipse temurininstaller
+sonarqube scanner
+maven
+git
+docker
+owasp dependency check
+go to manage jenkins:tools
+add jdk
+add maven
+add nodejs
+
+pipeline script
+
+siwggy pipeline
+
+pipeline {
+    agent any
+
+    tools {
+        jdk 'jdk17'
+        nodejs 'node23'
+    }
+
+    environment {
+        SCANNER_HOME = tool 'sonar-scanner'
+    }
+
+    stages {
+        stage('Clean Workspace') {
+            steps {
+                cleanWs()
+            }
+        }
+
+        stage('Checkout from Git') {
+            steps {
+                git 'https://github.com/prasad234567/My-DevOps-Project-Swiggy.git'
+            }
+        }
+
+        stage('SonarQube Analysis') {
+            steps {
+                withSonarQubeEnv('sonar-server') {
+                    sh ''' 
+                    $SCANNER_HOME/bin/sonar-scanner \
+                    -Dsonar.projectName=swiggy-app \
+                    -Dsonar.projectKey=swiggy-app 
+                    '''
+                }
+            }
+        }
+
+        stage('Quality Gate') {
+            steps {
+                script {
+                    waitForQualityGate abortPipeline: false, credentialsId: 'sonar-token'
+                }
+            }
+        }
+
+        stage('Install Dependencies') {
+            steps {
+                sh 'npm install'
+            }
+        }
+
+        stage('OWASP FS SCAN') {
+            steps {
+                dependencyCheck additionalArguments: '--scan ./ --disableYarnAudit --disableNodeAudit', odcInstallation: 'DP-Check'
+                dependencyCheckPublisher pattern: '**/dependency-check-report.xml'
+            }
+        }
+
+        stage('TRIVY FS SCAN') {
+            steps {
+                sh 'trivy fs . > trivyfs.txt'
+            }
+        }
+
+        stage('Docker Login') {
+            steps {
+                withCredentials([usernamePassword(credentialsId: 'docker-creds', passwordVariable: 'mypasswd', usernameVariable: 'usr')]) {
+                    sh 'docker logout'
+                    sh 'echo ${mypasswd} | docker login -u ${usr} --password-stdin'
+                }
+            }
+        }
+
+        stage('Build Docker') {
+            steps {
+                sh 'docker build -t swiggy-app .'
+                sh 'docker tag swiggy-app akhil460/swiggy-app:latest'
+            }
+        }
+
+        stage('Push to DockerHub') {
+            steps {
+                sh 'docker push akhil460/swiggy-app:latest'
+            }
+        }
+
+        stage('Deploy to Container') {
+            steps {
+                sh 'docker run -d --name swiggy-app -p 3000:3000 akhil460/swiggy-app:latest'
+            }
+        }
+    }
+}
+
+zomato pipeline
+
+pipeline {
+    agent any
+
+    tools {
+        jdk 'jdk17'
+        nodejs 'node23'
+    }
+
+    environment {
+        SCANNER_HOME = tool 'sonar-scanner'
+    }
+
+    stages {
+        stage("Clean Workspace") {
+            steps {
+                cleanWs()
+            }
+        }
+
+        stage("Git Checkout") {
+            steps {
+                git 'https://github.com/KastroVKiran/Zomato-Project-Kastro.git'
+            }
+        }
+
+        stage("SonarQube Analysis") {
+            steps {
+                withSonarQubeEnv('sonar-server') {
+                    sh ''' 
+                    $SCANNER_HOME/bin/sonar-scanner -Dsonar.projectName=zomato-app \
+                    -Dsonar.projectKey=zomato-app 
+                    '''
+                }
+            }
+        }
+
+        stage("Code Quality Gate") {
+            steps {
+                script {
+                    waitForQualityGate abortPipeline: false, credentialsId: 'sonar-token'
+                }
+            }
+        }
+
+        stage("Install NPM Dependencies") {
+            steps {
+                sh "npm install"
+            }
+        }
+
+        stage("OWASP FS Scan") {
+            steps {
+                dependencyCheck additionalArguments: '--scan ./ --disableYarnAudit --disableNodeAudit', odcInstallation: 'DP-Check'
+                dependencyCheckPublisher pattern: '**/dependency-check-report.xml'
+            }
+        }
+
+        stage("Trivy File Scan") {
+            steps {
+                sh "trivy fs . > trivy.txt"
+            }
+        }
+
+        stage("Build Docker Image") {
+            steps {
+                sh "docker build -t zomato-app ."
+            }
+        }
+
+        stage("Tag & Push to DockerHub") {
+            steps {
+                script {
+                    withDockerRegistry(credentialsId: 'docker-creds') {
+                        sh "docker tag zomato-app varaprasad372/zomato-app:latest"
+                        sh "docker push varaprasad372/zomato-app:latest"
+                    }
+                }
+            }
+        }
+
+        stage("Deploy to Container") {
+            steps {
+                sh 'docker run -d --name zomato -p 3000:3000 varaprasad372/zomato-app:latest'
+            }
+        }
+    }
+}
+------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+docker installation commands
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------
+sudo apt-get update
+sudo apt-get install docker.io -y
+sudo usermod -aG docker $USER
+newgrp docker
+sudo chmod 777 /var/run/docker.sock
+
+-------------------------------------------------------------------------------------------------------------------------
+docker compose installation commands
+-------------------------------------------------------------------------------------------------------------------------
+sudo curl -L "https://github.com/docker/compose/releases/download/1.29.2/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+
+sudo chmod +x /usr/local/bin/docker-compose
+
+docker-compose –-version
+
+mkdir -p project/src
+
+nano project/src/index.html
+
+<!doctype html>
+<html lang="en">
+<head>
+
+<p>Nginx with Docker Compose</p>
+
+
+</head>
+<body>
+
+<h2>Install Nginx using Docker Compose.</h2>
+<p>This content is being served by an Nginx Docker container.</p>
+
+<script>class RocketElementorAnimation{constructor(){this.deviceMode=document.createElement("span"),this.deviceMode.id="elementor-device-mode-wpr",this.deviceMode.setAttribute("class","elementor-screen-only"),document.body.appendChild(this.deviceMode)}_detectAnimations(){let t=getComputedStyle(this.deviceMode,":after").content.replace(/"/g,"");this.animationSettingKeys=this._listAnimationSettingsKeys(t),document.querySelectorAll(".elementor-invisible[data-settings]").forEach(t=>{const e=t.getBoundingClientRect();if(e.bottom>=0&&e.top<=window.innerHeight)try{this._animateElement(t)}catch(t){}})}_animateElement(t){const e=JSON.parse(t.dataset.settings),i=e._animation_delay||e.animation_delay||0,n=e[this.animationSettingKeys.find(t=>e[t])];if("none"===n)return void t.classList.remove("elementor-invisible");t.classList.remove(n),this.currentAnimation&&t.classList.remove(this.currentAnimation),this.currentAnimation=n;let s=setTimeout(()=>{t.classList.remove("elementor-invisible"),t.classList.add("animated",n),this._removeAnimationSettings(t,e)},i);window.addEventListener("rocket-startLoading",function(){clearTimeout(s)})}_listAnimationSettingsKeys(t="mobile"){const e=[""];switch(t){case"mobile":e.unshift("_mobile");case"tablet":e.unshift("_tablet");case"desktop":e.unshift("_desktop")}const i=[];return["animation","_animation"].forEach(t=>{e.forEach(e=>{i.push(t+e)})}),i}_removeAnimationSettings(t,e){this._listAnimationSettingsKeys().forEach(t=>delete e[t]),t.dataset.settings=JSON.stringify(e)}static run(){const t=new RocketElementorAnimation;requestAnimationFrame(t._detectAnimations.bind(t))}}document.addEventListener("DOMContentLoaded",RocketElementorAnimation.run);</script></body>
+</html>
+
+nano project/docker-compose.yaml
+
+version: "3"
+services:
+  client:
+    image: nginx
+    ports:
+      - "8000:80"
+    volumes:
+      - ./src:/usr/share/nginx/html
+
+cd project
+
+docker-compose up -d
+
+docker-compose images
+
+docker-compose ps
+
+docker-compose logs
+------------------------------------------------------------------------------------------------------------------------------
+docker volumes installations commands
+------------------------------------------------------------------------------------------------------------------------------
+docker volume create nginx_html
+docker run -d --name my-nginx -p 8080:80 -v nginx_html:/usr/share/nginx/html nginx
+docker volume inspect nginx_html
+docker restart my-nginx
+echo '<h1>Welcome to Nginx with Docker Volume!</h1>' | sudo tee /var/lib/docker/volumes/nginx_html/_data/index.html
+------------------------------------------------------------------------------------------------------------------------------
+docker volumes with database
+------------------------------------------------------------------------------------------------------------------------------
+
+docker pull mysql:latest
+ 
+docker run --name mysql-container -e MYSQL_ROOT_PASSWORD=my-secret-pw -d mysql:latest
+ 
+docker ps
+ 
+docker exec -it mysql-container mysql -u root -p
+ 
+enter password:my-secret-pw
+---------------------------------------------------------------------------------------------
+output
+
+welcome to the MYSQL monitor .The below shows that the MYSQL monitor is ready to use.
+----------------------------------------------------------------------------------------------
+create database demo;​
+
+use demo;
+
+create table student(name varchar(30),id int not null primary key);
+
+insert into student(name,id) values ('sreevani',1);​
+
+desc student;​
+
+select * from  student;
+
+insert into student(name,id) values ('rekha',2);
+
+desc student;
+
+select * from student;
+
+insert into student(name,id) values ('gayathri',3);
+
+desc student;
+
+select * from student;​
+
+show databases;
+
+select *from student;​
+
+update student set marks=90 where id=2;​
+
+select *from student;​
+
+select sum(marks) from student;​
+
+select avg(marks) from student;​
+
+​select *from student where name like 'r%';
+
+show databases;
+
+exit
+
+docker stop mysql-container
+
+docker rm mysql-container
+
+docker run --name mysql-container -e MYSQL_ROOT_PASSWORD=root_password -v mysql_data:/var/lib/mysql -d mysql:latest
+
+docker exec -it mysql-container mysql -u root -p	
+
+use demo;
+
+show databases;​
+
+exit​
+
+ docker stop mysql-container​
+
+ docker rm mysql-container​
+
+ docker ps -a​
+
+docker container ls -a​
+
+sudo systemctl restart docker​
+
+docker run --name mysql-container -e MYSQL_ROOT_PASSWORD=root_password -v mysql_data:/var/lib/mysql -d mysql:latest​
+
+docker volume create mysql_data​
+
+docker volume ls​
+
+docker volume inspect mysql_data​
+
+docker exec -it mysql-container mysql -u root -p​
+             
+Enter password:root_password ​
+
+select * from  student;​
+
+insert into student(name,id) values ('rekha',2);​
+
+desc student;​
+
+SHOW DATABASES;​
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------
+kubernetes installation commands
+------------------------------------------------------------------------------------------------------------------------------------------------------
+sudo apt-get update
+sudo apt install apt-transport-https curl -y
+
+sudo mkdir -p /etc/apt/keyrings
+curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+sudo apt-get update
+sudo apt-get install containerd.io -y
+
+sudo mkdir -p /etc/containerd
+sudo containerd config default | sudo tee /etc/containerd/config.toml
+
+sudo sed -i -e 's/SystemdCgroup = false/SystemdCgroup = true/g' /etc/containerd/config.toml
+
+sudo systemctl restart containerd
+
+curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.30/deb/Release.key | sudo gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+echo 'deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.30/deb/ /' | sudo tee /etc/apt/sources.list.d/kubernetes.list
+sudo apt-get update
+sudo apt-get install -y kubelet kubeadm kubectl
+sudo apt-mark hold kubelet kubeadm kubectl
+sudo systemctl enable --now kubelet
+
+sudo swapoff -a
+
+sudo modprobe br_netfilter
+
+sudo sysctl -w net.ipv4.ip_forward=1
+---------------------------------------->both instances
+------------------------------------------------------->only in master instance
+sudo kubeadm init --pod-network-cidr=10.244.0.0/16
+
+mkdir -p $HOME/.kube
+
+sudo cp -i /etc/kubernetes/admin.conf $HOME/.kube/config
+
+sudo chown $(id -u):$(id -g) $HOME/.kube/config
+
+kubectl apply -f https://github.com/flannel-io/flannel/releases/latest/download/kube-flannel.yml
+
+kubectl get pods --all-namespaces
+
+vi nginx.yaml
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nginx-deployment
+  labels:
+    app: nginx
+spec:
+  replicas: 6
+  selector:
+    matchLabels:
+      app: nginx
+  template:
+    metadata:
+      labels:
+        app: nginx
+    spec:
+      containers:
+      - name: nginx
+        image: nginx
+        ports:
+        - containerPort: 80
+
+kubectl apply -f nginx.yaml
+
+vi service.yaml
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: nginx-service
+  labels:
+    app: nginx
+spec:
+  selector:
+    app: nginx
+  ports:
+  - protocol: TCP
+    port: 80
+    targetPort: 80
+    nodePort: 30007
+  type: NodePort
+
+kubectl apply -f service.yaml
+
+kubectl get nodes
+
+----------------------------------------------------------------------------------------
+-----------------------------------------------------------------------------------------
+Terraform installation commands
+-------------------------------------
+aws configure
+aws access id =--------------------
+aws secret key=---------------------
+aws region=-------------------------
+formate=json
+
+Terraform init
+Terraform plan
+Terraform apply
+--------------------------------------------------------------------------------------------------------------
+terraform {
+
+  required_providers {
+
+    aws = {
+
+      source = "hashicorp/aws"
+
+      version = "3.69.0"
+
+    }
+
+  }
+
+}
+-----------------------------------------------------------------------------------------------------------------
+-----------------------------------------------------------------------------------------------------------------
+aws s3 buckets
+------------------------------------------------------------------------------------------------------------------
+provider "aws" {
+
+  profile = "default"
+
+  region  = "us-east-1"
+
+}
+
+resource "aws_cloudwatch_dashboard" "EC2_Dashboard" {
+
+  dashboard_name = "EC2-Dashboard"
+
+  dashboard_body = <<EOF
+
+{
+
+    "widgets": [
+
+        {
+
+            "type": "explorer",
+
+            "width": 24,
+
+            "height": 15,
+
+            "x": 0,
+
+            "y": 0,
+
+            "properties": {
+
+                "metrics": [
+
+                    {
+
+                        "metricName": "CPUUtilization",
+
+                        "resourceType": "AWS::EC2::Instance",
+
+                        "stat": "Maximum"
+
+                    }
+
+                ],
+
+                "aggregateBy": {
+
+                    "key": "InstanceType",
+
+                    "func": "MAX"
+
+                },
+
+                "labels": [
+
+                    {
+
+                        "key": "State",
+
+                        "value": "running"
+
+                    }
+
+                ],
+
+                "widgetOptions": {
+
+                    "legend": {
+
+                        "position": "bottom"
+
+                    },
+
+                    "view": "timeSeries",
+
+                    "rowsPerPage": 8,
+
+                    "widgetsPerRow": 2
+
+                },
+
+                "period": 60,
+
+                "title": "Running EC2 Instances CPUUtilization"
+
+            }
+
+        }
+
+    ]
+
+}
+
+EOF
+
+}
+
+module "metric_alarm" {
+
+  source  = "terraform-aws-modules/cloudwatch/aws//modules/metric-alarm"
+
+  version = "~> 2.0"
+
+  alarm_name          = "EC2_CPU_Usage"
+
+  comparison_operator = "GreaterThanOrEqualToThreshold"
+
+  evaluation_periods  = 2
+
+  threshold           = 70
+
+  period              = 60
+
+  unit                = "Count"
+
+  namespace   = "AWS/EC2"
+
+  metric_name = "CPUUtilization"
+
+  statistic   = "Average"
+
+  alarm_actions = ["arn:aws:sns:us-east-2:585584209241:cpu_utilization"]
+
+}
+
+resource "aws_launch_template" "EC2_Launch_Template" {
+
+  name_prefix   = "EC2-Launch-Template"
+
+  image_id      = "ami-0ddc798b3f1a5117e"
+
+  instance_type = "t2.micro"
+
+}
+
+resource "aws_autoscaling_group" "EC2_AutoScaling_Group" {
+
+  availability_zones = ["us-east-1b"]
+
+  desired_capacity   = 1
+
+  max_size           = 5
+
+  min_size           = 1
+
+  launch_template {
+
+    id      = aws_launch_template.EC2_Launch_Template.id
+
+    version = "$Latest"
+
+  }
+
+  depends_on = [
+
+    aws_launch_template.EC2_Launch_Template,
+
+  ]
+
+}
+
+resource "aws_autoscaling_policy" "EC2_AutoScaling_Policy" {
+
+  name                   = "EC2-AutoScaling-Policy"
+
+  scaling_adjustment     = 2
+
+  adjustment_type        = "ChangeInCapacity"
+
+  cooldown               = 60
+
+  autoscaling_group_name = aws_autoscaling_group.EC2_AutoScaling_Group.name
+
+  depends_on = [
+
+    aws_autoscaling_group.EC2_AutoScaling_Group,
+
+  ]
+
+}
+
+resource "aws_cloudwatch_metric_alarm" "EC2_metric_alarm" {
+
+  alarm_name          = "EC2-metric-alarm"
+
+  comparison_operator = "GreaterThanOrEqualToThreshold"
+
+  evaluation_periods  = "1"
+
+  metric_name         = "CPUUtilization"
+
+  namespace           = "AWS/EC2"
+
+  period              = "60"
+
+  statistic           = "Average"
+
+  threshold           = "70"
+
+  depends_on = [
+
+    aws_autoscaling_group.EC2_AutoScaling_Group,
+
+  ]
+
+  dimensions = {
+
+    AutoScalingGroupName = aws_autoscaling_group.EC2_AutoScaling_Group.name
+
+  }
+
+  alarm_description = "This metric monitors ec2 cpu utilization"
+
+  alarm_actions     = [aws_autoscaling_policy.EC2_AutoScaling_Policy.arn]
+
+}
+
+resource "aws_cloudwatch_metric_stream" "main" {
+
+  name          = "my-metric-stream"
+
+  role_arn      = aws_iam_role.metric_stream_to_firehose.arn
+
+  firehose_arn  = aws_kinesis_firehose_delivery_stream.s3_stream.arn
+
+  output_format = "json"
+
+  include_filter {
+
+    namespace = "AWS/EC2"
+
+  }
+
+  include_filter {
+
+    namespace = "AWS/EBS"
+
+  }
+
+}
+
+resource "aws_iam_role" "metric_stream_to_firehose" {
+
+  name = "metric_stream_to_firehose_role"
+
+  assume_role_policy = <<EOF
+
+{
+
+  "Version": "2012-10-17",
+
+  "Statement": [
+
+    {
+
+      "Action": "sts:AssumeRole",
+
+      "Principal": {
+
+        "Service": "streams.metrics.cloudwatch.amazonaws.com"
+
+      },
+
+      "Effect": "Allow",
+
+      "Sid": ""
+
+    }
+
+  ]
+
+}
+
+EOF
+
+}
+
+resource "aws_iam_role_policy" "metric_stream_to_firehose" {
+
+  name = "default"
+
+  role = aws_iam_role.metric_stream_to_firehose.id
+
+  policy = <<EOF
+
+{
+
+    "Version": "2012-10-17",
+
+    "Statement": [
+
+        {
+
+            "Effect": "Allow",
+
+            "Action": [
+
+                "firehose:PutRecord",
+
+                "firehose:PutRecordBatch"
+
+            ],
+
+            "Resource": "${aws_kinesis_firehose_delivery_stream.s3_stream.arn}"
+
+        }
+
+    ]
+
+}
+
+EOF
+
+}
+
+resource "aws_s3_bucket" "bucket" {
+
+  bucket = "test-metric-stream-bucket1725"
+
+  acl    = "private"
+
+}
+
+resource "aws_iam_role" "firehose_to_s3" {
+
+  assume_role_policy = <<EOF
+
+{
+
+  "Version": "2012-10-17",
+
+  "Statement": [
+
+    {
+
+      "Action": "sts:AssumeRole",
+
+      "Principal": {
+
+        "Service": "firehose.amazonaws.com"
+
+      },
+
+      "Effect": "Allow",
+
+      "Sid": ""
+
+    }
+
+  ]
+
+}
+
+EOF
+
+}
+
+resource "aws_iam_role_policy" "firehose_to_s3" {
+
+  name = "default"
+
+  role = aws_iam_role.firehose_to_s3.id
+
+  policy = <<EOF
+
+{
+
+    "Version": "2012-10-17",
+
+    "Statement": [
+
+        {
+
+            "Effect": "Allow",
+
+            "Action": [
+
+                "s3:AbortMultipartUpload",
+
+                "s3:GetBucketLocation",
+
+                "s3:GetObject",
+
+                "s3:ListBucket",
+
+                "s3:ListBucketMultipartUploads",
+
+                "s3:PutObject"
+
+            ],
+
+            "Resource": [
+
+                "${aws_s3_bucket.bucket.arn}",
+
+                "${aws_s3_bucket.bucket.arn}/*"
+
+            ]
+
+        }
+
+    ]
+
+}
+
+EOF
+
+}
+
+resource "aws_kinesis_firehose_delivery_stream" "s3_stream" {
+
+  name        = "metric-stream-test-stream"
+
+  destination = "s3"
+
+  s3_configuration {
+
+    role_arn   = aws_iam_role.firehose_to_s3.arn
+
+    bucket_arn = aws_s3_bucket.bucket.arn
+
+  }
+
+}
+
+resource "aws_cloudwatch_composite_alarm" "EC2_and_EBS" {
+
+  alarm_description = "Composite alarm that monitors CPUUtilization and EBS Volume Write Operations"
+
+  alarm_name        = "EC2_&EBS_Composite_Alarm"
+
+  alarm_actions = [aws_sns_topic.EC2_and_EBS_topic.arn]
+
+  alarm_rule = "ALARM(${aws_cloudwatch_metric_alarm.EC2_CPU_Usage_Alarm.alarm_name}) OR ALARM(${aws_cloudwatch_metric_alarm.EBS_WriteOperations.alarm_name})"
+
+  depends_on = [
+
+    aws_cloudwatch_metric_alarm.EC2_CPU_Usage_Alarm,
+
+    aws_cloudwatch_metric_alarm.EBS_WriteOperations,
+
+    aws_sns_topic.EC2_and_EBS_topic,
+
+    aws_sns_topic_subscription.EC2_and_EBS_Subscription
+
+  ]
+
+}
+
+resource "aws_cloudwatch_metric_alarm" "EC2_CPU_Usage_Alarm" {
+
+  alarm_name          = "EC2_CPU_Usage_Alarm"
+
+  comparison_operator = "GreaterThanOrEqualToThreshold"
+
+  evaluation_periods  = "2"
+
+  metric_name         = "CPUUtilization"
+
+  namespace           = "AWS/EC2"
+
+  period              = "60"
+
+  statistic           = "Average"
+
+  threshold           = "70"
+
+  alarm_description   = "This metric monitors ec2 cpu utilization exceeding 70%"
+
+}
+
+resource "aws_cloudwatch_metric_alarm" "EBS_WriteOperations" {
+
+  alarm_name          = "EBS_WriteOperations"
+
+  comparison_operator = "GreaterThanOrEqualToThreshold"
+
+  evaluation_periods  = "2"
+
+  metric_name         = "VolumeReadOps"
+
+  namespace           = "AWS/EC2"
+
+  period              = "120"
+
+  statistic           = "Average"
+
+  threshold           = "1000"
+
+  alarm_description   = "This monitors the average read operations on EBS Volumes in a specified period of time"
+
+}
+
+resource "aws_sns_topic" "EC2_and_EBS_topic" {
+
+  name = "EC2_and_EBS_topic"
+
+}
+
+resource "aws_sns_topic_subscription" "EC2_and_EBS_Subscription" {
+
+  topic_arn = aws_sns_topic.EC2_and_EBS_topic.arn
+
+  protocol  = "email"
+
+  endpoint  = "rekha@speshway.com"
+
+  depends_on = [
+
+    aws_sns_topic.EC2_and_EBS_topic
+
+  ]
+
+}
+--------------------------------------------------------------------------------------------------------------------
+----------------------------------------------------------------------------------------------------------------------- 
+vpc in vs code 
+---------------------------------------------------------------------------------------------------------------------
+provider "aws" {
+
+  region = "eu-west-1"  # Replace with your desired AWS region
+
+}
+
+resource "aws_vpc" "demo-vpc" {
+
+  cidr_block = "10.0.0.0/16"
+
+  tags = {
+
+    Name = "demo-vpc"
+
+  }
+
+
+}
+
+resource "aws_internet_gateway" "demo-igw" {
+
+  vpc_id = aws_vpc.demo-vpc.id
+
+  tags = {
+
+    Name = "demo-vpc-IGW"
+
+    }
+
+}
+
+resource "aws_subnet" "private-subnet-1" {
+
+  vpc_id     = aws_vpc.demo-vpc.id
+
+  cidr_block = "10.0.1.0/24"
+
+  availability_zone = "eu-west-1a"
+
+  tags = {
+
+    Name = "private-subnet-1"
+
+  }
+
+}
+
+resource "aws_subnet" "private-subnet-2" {
+
+  vpc_id     = aws_vpc.demo-vpc.id
+
+  cidr_block = "10.0.2.0/24"
+
+  availability_zone = "eu-west-1b"
+
+  tags = {
+
+    Name = "private-subnet-2"
+
+  }
+
+}
+
+resource "aws_subnet" "public-subnet-1" {
+
+  vpc_id     = aws_vpc.demo-vpc.id
+
+  cidr_block = "10.0.3.0/24"
+
+  availability_zone = "eu-west-1a"
+
+  tags = {
+
+    Name = "public-subnet-1"
+
+  }
+
+}
+
+resource "aws_subnet" "public-subnet-2" {
+
+  vpc_id     = aws_vpc.demo-vpc.id
+
+  cidr_block = "10.0.4.0/24"
+
+  availability_zone = "eu-west-1b"
+
+  tags = {
+
+    Name = "public-subnet-2"
+
+  }
+
+}
+
+resource "aws_route_table" "public-route-table" {
+
+  vpc_id = aws_vpc.demo-vpc.id
+
+  tags = {
+
+    Name = "public-route-table"
+
+  }
+
+}
+
+resource "aws_route" "public-route" {
+
+  route_table_id         = aws_route_table.public-route-table.id
+
+  destination_cidr_block = "0.0.0.0/0"
+
+  gateway_id             = aws_internet_gateway.demo-igw.id
+
+}
+
+resource "aws_route_table_association" "public-subnet-1-association" {
+
+  subnet_id      = aws_subnet.public-subnet-1.id
+
+  route_table_id = aws_route_table.public-route-table.id
+
+}
+
+resource "aws_route_table_association" "public-subnet-2-association" {
+
+  subnet_id      = aws_subnet.public-subnet-2.id
+
+  route_table_id = aws_route_table.public-route-table.id
+
+}
+
+resource "aws_eip" "nat-eip" {
+
+  vpc = true
+
+   tags = {
+
+      Name = "nat-eip"
+
+      }
+
+}
+
+resource "aws_nat_gateway" "nat-gateway" {
+
+  allocation_id = aws_eip.nat-eip.id
+
+  subnet_id     = aws_subnet.public-subnet-1.id
+
+  tags = {
+
+      Name = "nat-gateway"
+
+      }
+
+}
+
+resource "aws_security_group" "secgroup" {
+
+    name = "secgroup"
+
+    description = "awssecuritygroup"
+
+    vpc_id = aws_vpc.demo-vpc.id
+
+       ingress {
+
+        from_port = 0
+
+        to_port = 65535
+
+        protocol = "tcp"
+
+        cidr_blocks = ["0.0.0.0/0"]
+
+       }
+
+       egress {
+
+          from_port =0
+
+          to_port = 65535
+
+          protocol ="tcp"
+
+          cidr_blocks = ["0.0.0.0/0"]
+
+       }
+
+    tags = {
+
+        name ="secgroup"
+
+    }
+
+}
+
+resource "aws_network_acl" "pub_az1_nacl" {
+
+  vpc_id     = aws_vpc.demo-vpc.id
+
+  subnet_ids = [ aws_subnet.public-subnet-1.id]
+
+  tags = {
+
+    Name = "Public-AZ1-NACL"
+
+  }
+
+}
+------------------------------------------------------------------------------------------------------------------------
+------------------------------------------------------------------------------------------------------------------------
+
+ Lambda setup path step by step (API gateway)
+
+----------------------------------------------------------------------------------------------------------------------------
+1. Go to aws cosole
+
+2. Search lambda
+
+3. Open lambda
+
+4. Create function ------>Author from scratch------>function name------>runtime(select anyone)------>create function
+
+5. scroll down---->click on "code"---->check "code source"----->click "new test event"(anyname)----->save--->save and test
+
+6. goto test---->create event name(anyname)----->save and test
+
+7. search API---->create API----->scroll down------->take rest api----->click on build----->enter API name------>create api
+
+8. create resource----->take resource name-------->create resource
+
+9. create deploy----->take new stage(anyname)------>deploy
+
+10. create method type(lambda function)--->select "get"-------->create method------>copy the invoke url -------->paste in new tab----->show the out put
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------- 
+----------------------------------------------------------------
+HOW TO CONNECT EFS TO EC2
+ 
+1> CREAT SECURITY GROUP
+
+inbound select NFC and creat
+
+2>CREAT EFS CREAT FILE SYSTEM 
+> GIVE THE NAME AND CREAT VPC DEFAULT AND CUSTAMIZE 
+> SELECT PREVIOUS WHAT SSG CREATED SAME SSG SELETED HERE
+ 
+CREAT ONE EC2 INSTANCE 
+>GIVE THE DETAILS 
+>NETWORK & SETTINGS (EDIT)
+>VPC DEAFAULT TAKEN 
+>SUBNETS TAKEN presnt working region
+ 
+CONFIG & STORGE
+>0 x File systems (EDIT)
+
+EFS DEAFULT ALREDY THERE 
+
+THEN LAUNCH THE INSTANCES EC2
+---------------------------------------------------------------------------------
+EFS connect with ec2 commads
+--------------------------------------------------------------------------------- 
+sudo yum install -y amazon-efs-utils 
+
+sudo mkdir efs
+
+example:
+sudo mount -t efs -o tls fs-0a9f68aa9725f3b53:/ efs------->(goto  your efs file syatem and attach mount dns below command using ec2)
+sudo mount -t nfs4 -o nfsvers=4.1,rsize=1048576,wsize=1048576,hard,timeo=600,retrans=2,noresvport fs-0a9f68aa9725f3b53.efs.us-east-1.amazonaws.com:/ efs
+
+df -T
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ECS creation
+---------------------------------------------
+
+1. goto aws console
+
+2. search the ecs 
+
+3. create cluster--->cluster name
+
+4. create task defination------->scrolldown----->container details------->image uri(gallery.ecr.aws)search in google
+
+5. goto cluster open the cluster file 
+
+6. scrolldown create service
+
+7. in that service add network
+
+8. create security group------->HTTP-----80-------anywhere ipv4------>create service
+
+9.go to service------> click on task
+
+10. copy public ip address------>paste in new tab
+
